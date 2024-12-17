@@ -3,6 +3,8 @@ import {
   APIProvider,
   Map,
   MapCameraChangedEvent,
+  AdvancedMarker,
+  Pin,
 } from "@vis.gl/react-google-maps";
 import "./App.css";
 
@@ -11,10 +13,24 @@ interface Message {
   content: string;
 }
 
+type Poi = { key: string; location: google.maps.LatLngLiteral };
+const PoiMarkers = (props: { pois: Poi[] }) => {
+  return (
+    <>
+      {props.pois.map((poi: Poi) => (
+        <AdvancedMarker key={poi.key} position={poi.location}>
+          <Pin />
+        </AdvancedMarker>
+      ))}
+    </>
+  );
+};
+
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [locations, setLocations] = useState<Poi[]>([]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +57,12 @@ function App() {
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
+
+        // Add locations to map if assistant message contains locations
+        if (data.locations) {
+          console.log("Adding locations to map:", data.locations);
+          setLocations(JSON.parse(data.locations).locations);
+        }
       } catch (error) {
         console.error("Error:", error);
         setMessages((prev) => [
@@ -89,13 +111,13 @@ function App() {
       {/* Right Column - Google Maps */}
       <div className="map-container">
         <APIProvider
-          // TODO: PUT THIS API KEY IN ENV VAR
-          apiKey={"AIzaSyAmAyHdcxPjsykcrat-o77--fU7n30usiM"}
+          apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
           onLoad={() => console.log("Maps API has loaded.")}
         >
           <Map
             defaultZoom={13}
             defaultCenter={{ lat: -33.860664, lng: 151.208138 }}
+            mapId={import.meta.env.VITE_GOOGLE_MAPS_MAP_ID}
             onCameraChanged={(ev: MapCameraChangedEvent) =>
               console.log(
                 "camera changed:",
@@ -104,7 +126,9 @@ function App() {
                 ev.detail.zoom
               )
             }
-          />
+          >
+            {locations.length > 0} ? <PoiMarkers pois={locations} />
+          </Map>
         </APIProvider>
       </div>
     </div>

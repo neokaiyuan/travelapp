@@ -1,7 +1,3 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
-
 import OpenAI from "https://deno.land/x/openai@v4.69.0/mod.ts";
 import "https://deno.land/x/dotenv@v3.2.2/load.ts";
 
@@ -12,14 +8,64 @@ const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY")!,
 });
 
-Deno.serve(async (req) => {
-  // Add CORS headers
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*", // Replace '*' with your domain for more security
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS", // Adjust methods as needed
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  };
+// CORS headers for responses to requests from browser
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*", // Replace '*' with your domain for more security
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS", // Adjust methods as needed
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
 
+const tools: OpenAI.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      "name": "addMapPins",
+      "description": "Put pins on a Google Maps interface in the same window",
+      "strict": true,
+      "parameters": {
+        "type": "object",
+        "required": [
+          "locations",
+        ],
+        "properties": {
+          "locations": {
+            "type": "array",
+            "description": "Array of pin locations to be added on the map",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "Unique name of the location",
+                },
+                "location": {
+                  "type": "object",
+                  "properties": {
+                    "lat": {
+                      "type": "number",
+                      "description": "Latitude coordinate for the pin",
+                    },
+                    "lng": {
+                      "type": "number",
+                      "description": "Longitude coordinate for the pin",
+                    },
+                  },
+                  "required": ["lat", "lng"],
+                  "additionalProperties": false,
+                },
+              },
+              "required": ["key", "location"],
+              "additionalProperties": false,
+            },
+          },
+        },
+        "additionalProperties": false,
+      },
+    },
+  },
+];
+
+Deno.serve(async (req) => {
   // Handle OPTIONS request (preflight)
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -31,13 +77,52 @@ Deno.serve(async (req) => {
   try {
     const { messages } = await req.json();
 
-    const completion = await openai.chat.completions.create({
+    let completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: messages,
+      messages,
+      tools,
+    });
+
+    console.log(completion.choices[0].message);
+
+    const toolCalls = completion.choices[0].message.tool_calls;
+
+    // If no need to add pins to map, return the message content
+    if (!toolCalls || toolCalls.length === 0) {
+      return new Response(
+        JSON.stringify({ message: completion.choices[0].message.content }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    // If need to add pins to map, send pin locations to client
+    const toolCall = toolCalls[0];
+    const toolArgs = toolCall.function.arguments;
+
+    // Create message simulating result of function call
+    const fnCallResultMessage = {
+      role: "tool",
+      content: JSON.stringify({ locations: toolArgs }),
+      tool_call_id: toolCall.id,
+    };
+
+    // Simulate response after calling tool
+    completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        ...messages,
+        completion.choices[0].message,
+        fnCallResultMessage,
+      ],
     });
 
     return new Response(
-      JSON.stringify({ message: completion.choices[0].message.content }),
+      JSON.stringify({
+        message: completion.choices[0].message.content,
+        locations: toolArgs,
+      }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       },
@@ -55,15 +140,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-/* To invoke locally:
-
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
-
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/chat-completion' \
-    --header 'Authorization: Bearer ' \
-    --header 'Content-Type: application/json' \
-    --data '{"name":"Functions"}'
-
-*/
