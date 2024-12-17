@@ -8,13 +8,26 @@ import "https://deno.land/x/dotenv@v3.2.2/load.ts";
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-console.log("Hello from Functions!");
-
 const openai = new OpenAI({
   apiKey: Deno.env.get("OPENAI_API_KEY")!,
 });
 
 Deno.serve(async (req) => {
+  // Add CORS headers
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*", // Replace '*' with your domain for more security
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS", // Adjust methods as needed
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+
+  // Handle OPTIONS request (preflight)
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
   try {
     const { messages } = await req.json();
 
@@ -26,8 +39,8 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ message: completion.choices[0].message.content }),
       {
-        headers: { "Content-Type": "application/json" },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   } catch (error) {
     console.error("Error:", error);
@@ -37,8 +50,8 @@ Deno.serve(async (req) => {
       }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });

@@ -26,16 +26,13 @@ function App() {
       setIsLoading(true);
 
       try {
-        const response = await fetch(
-          "https://lmptepslcpnzbdcbkmqd.supabase.co/functions/v1/chat-completion",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ messages: [...messages, userMessage] }),
-          }
-        );
+        const response = await fetch(import.meta.env.VITE_SUPABASE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ messages: [...messages, userMessage] }),
+        });
 
         const data = await response.json();
         const assistantMessage = {
